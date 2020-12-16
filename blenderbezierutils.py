@@ -1780,6 +1780,49 @@ def exportSVG(context, filepath, exportView, clipView, lineWidth, lineColorOpts,
 
     doc.writexml(open(filepath,"w"))
 
+def snapHandle(src_point, src_mw, curves): # @shspage
+    delta = None
+    src_co = src_mw @ src_point.co
+    
+    d = dst_point = dst_tangent = None
+    for curve in curves:
+        mw = curve.matrix_world
+        for spline in curve.data.splines:
+            if spline.type == "BEZIER":
+                points = spline.bezier_points
+                i_end = len(points) - 1
+                for i in range(i_end + (1 if spline.use_cyclic_u else 0)):
+                    j = (i + 1) if i < i_end else 0
+                    p0 = mw @ points[i].co
+                    p1 = mw @ points[i].handle_right
+                    p2 = mw @ points[j].handle_left
+                    p3 = mw @ points[j].co
+                    curve_spec = [p0, p1, p2, p3]
+                    t = getTForPt2(curve_spec, src_co)
+                    tmp_dst_point = getPtFromT(p0, p1, p2, p3, t)
+                    tmp_d = (tmp_dst_point - src_co).length_squared
+                    if d is None or tmp_d < d:
+                        d = tmp_d
+                        dst_point = tmp_dst_point
+                        dst_tangent = getTangentAtT(p0, p1, p2, p3, t)
+                        dst_tangent.normalize()
+
+    if d is not None:
+        invmw = src_mw.inverted()
+        han_r = src_mw @ src_point.handle_right - src_co
+        han_l = src_mw @ src_point.handle_left - src_co
+        len_r = han_r.length
+        len_l = han_l.length
+        sign_r = -1 if han_r.normalized().dot(dst_tangent) < 0 else 1
+        sign_l = -1 if han_l.normalized().dot(dst_tangent) < 0 else 1
+        co_new = invmw @ dst_point
+        delta = co_new - src_point.co
+        src_point.co = co_new
+        src_point.handle_right = invmw  @ (dst_point + sign_r * dst_tangent * len_r)
+        src_point.handle_left = invmw @ (dst_point + sign_l * dst_tangent * len_l)
+    else:
+        print("BezierUtil: SnapHandle: Failed to find the closest point on a curve")
+    return delta
 
 ###################### Operators ######################
 
@@ -2894,6 +2937,36 @@ def getTForPt(curve, testPt, tolerance = .000001):
                 retT = t
     return retT
 
+# an alternate function. getTForPt sometimes fails for some reason. @shspage
+def getTForPt2(curve, co, tolerance = .000001):
+    p0, p1, p2, p3 = curve
+    maxItr = 100
+    d = None
+    t_step = 0.1
+    t_min = 0.0
+    t_max = 1.0
+    t = 0.0
+    c = 0
+            
+    while c < maxItr:
+        tmp_t = t_min
+        while tmp_t <= t_max:
+            pnt = getPtFromT(p0, p1, p2, p3, min(1.0, tmp_t))
+            tmp_d = (co - pnt).length
+            if d is None or tmp_d < d:
+                d = tmp_d
+                t = tmp_t
+            tmp_t += t_step
+            
+        t_min = max(0.0, t - t_step)
+        t_max = min(1.0, t + t_step)
+        if (getPtFromT(p0, p1, p2, p3, t_min) - getPtFromT(p0, p1, p2, p3, t_max))\
+          .length_squared < tolerance:
+            break
+        t_step /= 4.0
+        c += 1
+    return t
+
 def getCosSortedByT(seg, cos, margin):
     coInfo = set()
 
@@ -3835,6 +3908,7 @@ class FTHotKeys:
     hkMnHdlType = 'hkMnHdlType'
     hkMnSelect = 'hkMnSelect'
     hkMnDeselect = 'hkMnDeselect'
+    hkMnSnapHandles = 'hkMnSnapHandles' # @shspage
 
     editHotkeys = []
     editHotkeys.append(FTHotKeyData(hkUniSubdiv, 'W', 'Segment Uniform Subdivide', \
@@ -3860,6 +3934,9 @@ class FTHotKeys:
     editHotkeys.append(FTHotKeyData(hkMnDeselect, 'Alt+A', 'Deselect', \
             'Deselect elements from existing spline selection', \
                 inclTools = {TOOL_TYPE_FLEXI_EDIT}))
+    editHotkeys.append(FTHotKeyData(hkMnSnapHandles, 'Shift+S', 'Snap Handles', \
+            'Snap handles of selected end point to other curve', \
+                inclTools = {TOOL_TYPE_FLEXI_EDIT})) # @shspage
 
     # Common
     hkToggleKeyMap = 'hkToggleKeyMap'
@@ -4367,6 +4444,11 @@ class FTMenu:
          ['miDeselObj', 'Curve Object', 'GP_SELECT_STROKES'], \
          ['miDeselInvert', 'Invert Selection', 'SELECT_SUBTRACT']], \
             'VIEW3D_MT_FlexiEditDeselMenu', 'Deselect', 'mnDeselect'))
+
+    editMenus.append(FTMenuData(FTHotKeys.hkMnSnapHandles, \
+        [['miSnapHandles', 'Selected Ends', 'NONE'], \
+         ['miSnapPaths', 'Move Paths', 'NONE']], \
+            'VIEW3D_MT_FlexiEditDeselMenu', 'Snap Handles', 'mnSnapHandles')) # @shspage
 
     idDataMap = {m.hotkeyId: m for m in editMenus}
     toolClassMap = {'ModalFlexiEditBezierOp': set([m.hotkeyId for m in editMenus])}
@@ -9168,6 +9250,66 @@ class ModalFlexiEditBezierOp(ModalBaseFlexiOp):
                                 c.alignHandle(ptIdx, 0, allShapekeys = True)
         bpy.ops.ed.undo_push()
 
+    def mnSnapHandles(self, opt): # @shspage
+        is_movePaths = opt[0] == 'miSnapPaths'
+        curves = [o for o in bpy.data.objects if isBezier(o) and o.visible_get() \
+            and not o.hide_select and len(o.data.splines[0].bezier_points) > 1]
+
+        tgt_cvs = []
+        for c in self.selectCurveInfos:
+            if c.obj.data.splines[c.splineIdx].use_cyclic_u:
+                continue
+            idx = None
+            for i, cv in enumerate(curves):
+                if cv == c.obj:
+                    last_idx = len(cv.data.splines[c.splineIdx].bezier_points) - 1
+                    start_selected = end_selected = False
+                    if 0 in c.ptSels and 1 in c.ptSels[0]:
+                        start_selected = True
+                        idx = i
+                    if last_idx > 0 and last_idx in c.ptSels and 1 in c.ptSels[last_idx]:
+                        end_selected = True
+                        idx = i
+                    if start_selected or end_selected:
+                        tgt_cvs.append((c.obj, c.splineIdx, start_selected, end_selected))
+                    if idx is not None:
+                        break
+            if idx is not None:
+                curves.pop(idx)
+
+        if len(tgt_cvs) < 1:
+            print("BezierUtil: SnapHandle: There's no selected end point.")
+        else:
+            is_modified = False
+            for obj, sp_idx, start_selected, end_selected in tgt_cvs:
+                deltas = []
+                pt_range = list(range(len(obj.data.splines[sp_idx].bezier_points)))
+                if start_selected:
+                    src_point = obj.data.splines[sp_idx].bezier_points[0]
+                    delta_start = snapHandle(src_point, obj.matrix_world, curves)
+                    if delta_start is not None:
+                        deltas.append(delta_start)
+                        pt_range.pop(0)
+                if len(pt_range) > 0 and end_selected:
+                    src_point = obj.data.splines[sp_idx].bezier_points[-1]
+                    delta_end = snapHandle(src_point, obj.matrix_world, curves)
+                    if delta_end is not None:
+                        deltas.append(delta_end)
+                        pt_range.pop()
+                if is_movePaths:
+                    delta = deltas[0]
+                    if len(deltas) > 1:
+                        delta = (deltas[0] + deltas[1]) / 2
+                    for idx in pt_range:
+                        pt = obj.data.splines[sp_idx].bezier_points[idx]
+                        pt.co += delta
+                        pt.handle_right += delta
+                        pt.handle_left += delta
+                if len(deltas) > 0:
+                    is_modified = True
+            if is_modified:
+                bpy.ops.ed.undo_push()
+
     def exclToolRegion(self):
         return False
 
@@ -10222,10 +10364,11 @@ class BezierUtilsPreferences(AddonPreferences):
             update = updatePanel
     )
 
+    # Scaled default values to support retina display. @shspage
     lineWidth: FloatProperty(
             name = "Line Thickness",
             description = "Thickness of segment & handle Lines of Flexi Draw and Edit",
-            default = 1.5,
+            default = 1.5 * bpy.context.preferences.system.ui_scale,
             min = 0.1,
             max = 20,
             update = FTProps.updateProps
@@ -10234,7 +10377,7 @@ class BezierUtilsPreferences(AddonPreferences):
     drawPtSize: FloatProperty(
             name = "Handle Point Size",
             description = "Size of Flexi Draw and Edit Bezier handle points",
-            default = 5,
+            default = 5 * bpy.context.preferences.system.ui_scale,
             min = 0.1,
             max = 20,
             update = FTProps.updateProps
@@ -10243,7 +10386,7 @@ class BezierUtilsPreferences(AddonPreferences):
     editSubdivPtSize: FloatProperty(
             name = "Uniform Subdiv Point Size",
             description = "Size of point marking subdivisions",
-            default = 6,
+            default = 6 * bpy.context.preferences.system.ui_scale,
             min = 0.1,
             max = 20,
             update = FTProps.updateProps
@@ -10252,7 +10395,7 @@ class BezierUtilsPreferences(AddonPreferences):
     greaseSubdivPtSize: FloatProperty(
             name = "Flexi Grease Res Point Size",
             description = "Size of point marking resoulution in Flexi Grease Tool",
-            default = 4,
+            default = 4 * bpy.context.preferences.system.ui_scale,
             min = 0.1,
             max = 20,
             update = FTProps.updateProps
@@ -10261,7 +10404,7 @@ class BezierUtilsPreferences(AddonPreferences):
     markerSize: FloatProperty(
             name = "Marker Size",
             description = "Size of Flexi Draw and Mark Starting Vertices",
-            default = 6,
+            default = 6 * bpy.context.preferences.system.ui_scale,
             min = 0.1,
             max = 20,
             update = FTProps.updateProps
@@ -10270,7 +10413,7 @@ class BezierUtilsPreferences(AddonPreferences):
     axisLineWidth: FloatProperty(
             name = "Axis Line Thickness",
             description = "Thickness of Axis Lines for snapping & locking",
-            default = 0.25,
+            default = 0.25 * bpy.context.preferences.system.ui_scale,
             min = 0.1,
             max = 20,
             update = FTProps.updateProps
@@ -10279,7 +10422,7 @@ class BezierUtilsPreferences(AddonPreferences):
     snapPtSize: FloatProperty(
             name = "Snap Point Size",
             description = "Size of snap point indicator",
-            default = 5,
+            default = 5 * bpy.context.preferences.system.ui_scale,
             min = 0.1,
             max = 20,
             update = FTProps.updateProps
@@ -10332,7 +10475,7 @@ class BezierUtilsPreferences(AddonPreferences):
     snapDist: FloatProperty(
             name = "Snap Distance",
             description = "Snapping distance (range) in pixels",
-            default = 20,
+            default = 20 * bpy.context.preferences.system.ui_scale,
             min = 1,
             max = 200,
             update = FTProps.updateProps
@@ -10376,7 +10519,7 @@ class BezierUtilsPreferences(AddonPreferences):
     keyMapFontSize: IntProperty(
             name = "Keymap Font Size",
             description = "Font size of keymap text",
-            default = 10,
+            default = int(10 * bpy.context.preferences.system.ui_scale),
             min = 1,
             max = 2000,
             update = FTProps.updateProps
@@ -10385,7 +10528,7 @@ class BezierUtilsPreferences(AddonPreferences):
     mathFnTxtFontSize: IntProperty(
             name = "Math Function Font Size",
             description = "Font size of math function equations (Flexi Draw - Math Fn mode)",
-            default = 20,
+            default = int(20 * bpy.context.preferences.system.ui_scale),
             min = 1,
             max = 2000,
             update = FTProps.updateProps
@@ -10394,7 +10537,7 @@ class BezierUtilsPreferences(AddonPreferences):
     keyMapLocX: IntProperty(
             name = "Keymap Location X",
             description = "Horizontal starting position of keymap display",
-            default = 10,
+            default = int(10 * bpy.context.preferences.system.ui_scale),
             min = 1,
             max = 2000,
             update = FTProps.updateProps
@@ -10403,7 +10546,7 @@ class BezierUtilsPreferences(AddonPreferences):
     keyMapLocY: IntProperty(
             name = "Keymap Font Size",
             description = "Vertical starting position of keymap display",
-            default = 10,
+            default = int(10 * bpy.context.preferences.system.ui_scale),
             min = 1,
             max = 2000,
             update = FTProps.updateProps
