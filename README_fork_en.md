@@ -26,7 +26,7 @@ After selecting the endpoint in object mode (with the Flexi Edit Bezier tool), p
 -** Move Paths **: Moves the endpoints and applies the movement to the entire path. If both endpoints are moved, the average of the moves is applied to the other points.
 
 ### Supports Retina display
-The default values ​​such as font size and line width are multiplied by `bpy.context.preferences.system.ui_scale`.
+The default values such as font size and line width are multiplied by `bpy.context.preferences.system.ui_scale`.
 
 (I'm not sure if this is the correct way to deal with this problem. I would appreciate it if you could point out.)
 
