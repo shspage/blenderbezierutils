@@ -21,9 +21,9 @@ Moves the endpoint of the selected _Bezier curve_ on the nearest point on the _B
 
 After selecting the endpoint in object mode (with the Flexi Edit Bezier tool), press ** Shift + S ** to display the pie menu. Select one of the following.
 
--** Selected Ends **: Moves the selected endpoints.
+- **Selected Ends** : Moves the selected endpoints.
 
--** Move Paths **: Moves the endpoints and applies the movement to the entire path. If both endpoints are moved, the average of the moves is applied to the other points.
+- **Move Paths** : Moves the endpoints and applies the movement to the entire path. If both endpoints are moved, the average of the moves is applied to the other points.
 
 ### Supports Retina display
 The default values such as font size and line width are multiplied by `bpy.context.preferences.system.ui_scale`.
