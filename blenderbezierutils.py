@@ -1780,7 +1780,7 @@ def exportSVG(context, filepath, exportView, clipView, lineWidth, lineColorOpts,
 
     doc.writexml(open(filepath,"w"))
 
-def snapHandle(src_point, src_mw, curves): # @shspage
+def snapHandle(src_point, src_mw, curves, on_vertex): # @shspage
     delta = None
     src_co = src_mw @ src_point.co
     
@@ -1800,6 +1800,8 @@ def snapHandle(src_point, src_mw, curves): # @shspage
                     curve_spec = [p0, p1, p2, p3]
                     t = getTForPt2(curve_spec, src_co)
                     tmp_dst_point = getPtFromT(p0, p1, p2, p3, t)
+                    if on_vertex:
+                        t, tmp_dst_point = closestResolutionPoint(curve_spec, spline.resolution_u, tmp_dst_point, t)
                     tmp_d = (tmp_dst_point - src_co).length_squared
                     if d is None or tmp_d < d:
                         d = tmp_d
@@ -1808,7 +1810,7 @@ def snapHandle(src_point, src_mw, curves): # @shspage
                         dst_tangent.normalize()
 
     if d is not None:
-        invmw = src_mw.inverted()
+        invmw = src_mw.inverted_safe()
         han_r = src_mw @ src_point.handle_right - src_co
         han_l = src_mw @ src_point.handle_left - src_co
         len_r = han_r.length
@@ -2966,6 +2968,26 @@ def getTForPt2(curve, co, tolerance = .000001):
         t_step /= 4.0
         c += 1
     return t
+
+def closestResolutionPoint(curve, reso, dst_point, t): #@shspage
+    ret_t = t
+    ret_point = dst_point
+    if reso > 0:
+        q_f = t * reso
+        q = int(q_f)
+        if q == q_f:
+            ret_t = t
+        else:
+            p0, p1, p2, p3 = curve
+            t_interval = 1.0 / reso
+            t1 = q * t_interval
+            t2 = min(t1 + t_interval, 1.0)
+            pt1 = getPtFromT(p0, p1, p2, p3, t1)
+            pt2 = getPtFromT(p0, p1, p2, p3, t2)
+            d1 = (pt1 - dst_point).length_squared
+            d2 = (pt2 - dst_point).length_squared
+            ret_t, ret_point = (t1, pt1) if d1 < d2 else (t2, pt2)
+    return ret_t, ret_point
 
 def getCosSortedByT(seg, cos, margin):
     coInfo = set()
@@ -4447,7 +4469,9 @@ class FTMenu:
 
     editMenus.append(FTMenuData(FTHotKeys.hkMnSnapHandles, \
         [['miSnapHandles', 'Selected Ends', 'NONE'], \
-         ['miSnapPaths', 'Move Paths', 'NONE']], \
+         ['miSnapHandlesOnVertex', 'Selected Ends (Vertex)', 'NONE'], \
+         ['miSnapPaths', 'Move Paths', 'NONE'], \
+         ['miSnapPathsOnVertex', 'Move Paths (Vertex)', 'NONE']], \
             'VIEW3D_MT_FlexiEditDeselMenu', 'Snap Handles', 'mnSnapHandles')) # @shspage
 
     idDataMap = {m.hotkeyId: m for m in editMenus}
@@ -9251,7 +9275,8 @@ class ModalFlexiEditBezierOp(ModalBaseFlexiOp):
         bpy.ops.ed.undo_push()
 
     def mnSnapHandles(self, opt): # @shspage
-        is_movePaths = opt[0] == 'miSnapPaths'
+        is_movePaths = opt[0].startswith('miSnapPaths')
+        on_vertex = opt[0] in ('miSnapPathsOnVertex', 'miSnapHandlesOnVertex')
         curves = [o for o in bpy.data.objects if isBezier(o) and o.visible_get() \
             and not o.hide_select and len(o.data.splines[0].bezier_points) > 1]
 
@@ -9286,13 +9311,13 @@ class ModalFlexiEditBezierOp(ModalBaseFlexiOp):
                 pt_range = list(range(len(obj.data.splines[sp_idx].bezier_points)))
                 if start_selected:
                     src_point = obj.data.splines[sp_idx].bezier_points[0]
-                    delta_start = snapHandle(src_point, obj.matrix_world, curves)
+                    delta_start = snapHandle(src_point, obj.matrix_world, curves, on_vertex)
                     if delta_start is not None:
                         deltas.append(delta_start)
                         pt_range.pop(0)
                 if len(pt_range) > 0 and end_selected:
                     src_point = obj.data.splines[sp_idx].bezier_points[-1]
-                    delta_end = snapHandle(src_point, obj.matrix_world, curves)
+                    delta_end = snapHandle(src_point, obj.matrix_world, curves, on_vertex)
                     if delta_end is not None:
                         deltas.append(delta_end)
                         pt_range.pop()
