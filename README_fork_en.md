@@ -2,6 +2,11 @@
 
 by [@shspage](https://github.com/shspage)
 
+
+## ver.0.9.96+  -  2020.12.27
+
+(Merge remote-tracking branch 'upstream/master')
+
 ----
 
 ## ver.0.9.95+2  -  2020.12.17
@@ -19,7 +24,7 @@ In Vertex mode, the destination of the endpoint is not the (mathematical) closes
 ### Added handle snap function
 Moves the endpoint of the selected _Bezier curve_ on the nearest point on the _Bezier curve_. At that time, adjust the angle of the handle to the tangent line at the destination.
 
-After selecting the endpoint in object mode (with the Flexi Edit Bezier tool), press ** Shift + S ** to display the pie menu. Select one of the following.
+After selecting the endpoint in object mode (with the Flexi Edit Bezier tool), press **Shift + S** to display the pie menu. Select one of the following.
 
 - **Selected Ends** : Moves the selected endpoints.
 
