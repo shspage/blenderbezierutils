@@ -4485,7 +4485,7 @@ class FTMenu:
          ['miSnapHandlesOnVertex', 'Selected Ends (Vertex)', 'NONE'], \
          ['miSnapPaths', 'Move Paths', 'NONE'], \
          ['miSnapPathsOnVertex', 'Move Paths (Vertex)', 'NONE']], \
-            'VIEW3D_MT_FlexiEditDeselMenu', 'Snap Handles', 'mnSnapHandles')) # @shspage
+            'VIEW3D_MT_FlexiEditSnapMenu', 'Snap Handles', 'mnSnapHandles')) # @shspage
 
     idDataMap = {m.hotkeyId: m for m in editMenus}
     toolClassMap = {'ModalFlexiEditBezierOp': set([m.hotkeyId for m in editMenus])}
@@ -10335,8 +10335,8 @@ def registerFlexiBezierKeymaps():
 
 def unregisterFlexiBezierKeymaps():
     keyconfigs = bpy.context.window_manager.keyconfigs
-    defaultmap = keyconfigs.get("blender").keymaps
-    addonmap   = keyconfigs.get("blender addon").keymaps
+    defaultmap = keyconfigs.get("Blender", keyconfigs.get("blender")).keymaps
+    addonmap   = keyconfigs.get("Blender addon", keyconfigs.get("blender addon")).keymaps
 
     for km_name, km_args, km_content in [keymapDraw, keymapGreaseDraw, keymapEdit]:
         keymap = addonmap.find(km_name, **km_args)
