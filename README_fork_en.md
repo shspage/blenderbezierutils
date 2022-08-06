@@ -2,6 +2,12 @@
 
 by [@shspage](https://github.com/shspage)
 
+## ver.0.9.96+3  -  2022.08.06
+
+(Merge remote-tracking branch 'upstream/master')
+
+----
+
 ## ver.0.9.96+2  -  2021.04.18
 
 Fixed an error that occurs when deleting this add-on on blender 2.93b.

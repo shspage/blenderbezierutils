@@ -1,6 +1,12 @@
 # [fork元](https://github.com/Shriinivas/blenderbezierutils) からの変更点
 by [@shspage](https://github.com/shspage)
 
+## ver.0.9.96+3  -  2022.08.06
+
+(fork元の変更を反映)
+
+----
+
 ## ver.0.9.96+2  -  2021.04.18
 
 blender 2.93b で終了時や本アドオンの削除時に発生するエラーに対応。
