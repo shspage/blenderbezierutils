@@ -2,6 +2,12 @@
 
 by [@shspage](https://github.com/shspage)
 
+## ver.0.9.96+4  -  2023.11.28
+
+(Merge remote-tracking branch 'upstream/master')
+
+----
+
 ## ver.0.9.96+3  -  2022.08.06
 
 (Merge remote-tracking branch 'upstream/master')
