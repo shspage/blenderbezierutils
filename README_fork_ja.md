@@ -1,6 +1,12 @@
 # [fork元](https://github.com/Shriinivas/blenderbezierutils) からの変更点
 by [@shspage](https://github.com/shspage)
 
+## ver.0.9.96+5  -  2024.9.3
+
+(fork元の変更を反映)
+
+----
+
 ## ver.0.9.96+4  -  2023.11.28
 
 (fork元の変更を反映)
